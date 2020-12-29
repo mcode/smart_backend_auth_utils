@@ -1,6 +1,7 @@
 
 const jose = require("node-jose")
 const qs = require("querystring")
+
 class ServerUtils {
 
   constructor(serverConfiguration){
@@ -45,3 +46,5 @@ class ServerUtils {
     return null 
   }
 }
+
+module.exports = ServerUtils
