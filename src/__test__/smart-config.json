@@ -1,0 +1,8 @@
+{
+  "token_endpoint": "https://test.com/auth/token",
+  "token_endpoint_auth_methods_supported": ["private_key_jwt"],
+  "token_endpoint_auth_signing_alg_values_supported": ["RS384"],
+  "scopes_supported": ["system/*.read"],
+  "registration_endpoint": "https://test.com/auth/register",
+  "jwks_url": "https://test.com/jwks"
+}

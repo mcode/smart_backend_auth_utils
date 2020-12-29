@@ -1,0 +1,9 @@
+{
+  "client_id": "s6BhdRkqt3",
+  "client_id_issued_at": 2893256800,
+  "client_secret_expires_at": 2893276800,
+  "grant_types": ["client_credentials"],
+  "client_name": "My Example Client",
+  "token_endpoint_auth_method": "private_key_jwt",
+  "jwks_uri": "https://client.example.org/my_public_keys.jwks"
+}

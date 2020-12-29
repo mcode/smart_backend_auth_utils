@@ -1,0 +1,6 @@
+{
+  "access_token": "m7rt6i7s9nuxkjvi8vsx",
+  "token_type": "bearer",
+  "expires_in": 300,
+  "scope": "system/*.read system/CommunicationRequest.write"
+}
