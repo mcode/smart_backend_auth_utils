@@ -6,6 +6,12 @@ const qs = require("querystring")
 
 class Client {
 
+  /**
+   * 
+   * @param {*} jwks This clients private key set used for signing requests
+   * @param {*} persistence An implementation of a persistence object to cache configurations and access tokens 
+   * @param {*} options addtional options
+   */
   constructor(jwks, persistence = new InMemoryPersistence(), options = {}) {
     this.jwks = jwks;
     this.persistence = persistence
@@ -14,6 +20,9 @@ class Client {
     this.options = options
   }
 
+  /**
+   * Get the local keystore that contains the JWKs for this client
+   */
   async getKeystore() {
     if (this.keystore) { return this.keystore }
     if (this.jwks.keys) {
@@ -27,6 +36,12 @@ class Client {
     return this.keystore;
   }
 
+  /**
+   * Get the Keystore that contains the keys for a remote server.  This will check the 
+   * persistence object for the keys first and return those, otherwise it will attempt 
+   * retrieve the keys from the remote servers public jwks_uri. 
+   * @param {*} server The base url of the server
+   */
   async getServerKeystore(server) {
     let serverKS = this.serverKeyStores[server]
     if (!serverKS) {
@@ -41,9 +56,13 @@ class Client {
     return serverKS;
   }
 
-  async getKeyOrDefault(kid) {
-    console.log(kid);
 
+  /**
+   * Get the key from the keystore for the kid provided.  If it is not there return
+   * the first key used for signing 
+   * @param {*} kid  the kid of the key to lookup
+   */
+  async getKeyOrDefault(kid) {
     let keystore = await this.getKeystore()
     if (kid) {
       return keystore.get(kid)
@@ -51,10 +70,15 @@ class Client {
     return keystore.all({ use: 'sig' })
   }
 
+  /**
+   * Generate a signed JWT used for authenticating 
+   * @param {*} client_id The identifier of the client on the remote server
+   * @param {*} aud The token url of the server the JWT is being created for
+   * @param {*} kid The identifier of the key in the JWKS to sign the JWT
+   */
   async generateJWT(client_id, aud, kid = this.signingKeyId) {
     let options = { alg: 'RS384', compact: true }
     let key = await this.getKeyOrDefault(kid)
-    console.log(key);
 
     let input = JSON.stringify({
       sub: client_id,
@@ -69,17 +93,25 @@ class Client {
       final()
   }
 
+  /**
+   * Load the smat configuration from the remote servers /.well-known/smart-configuration uri
+   * 
+   * @param {*} server The base url of the remote server 
+   */
   async loadServerConfiguration(server) {
     // make an http request to the /.well-known/smart-configuration url of the server
     // and store the config locally 
     let configResponse = await axios.get(server + "/.well-known/smart-configuration");
-    console.log(configResponse.data);
-
     this.persistence.addServerConfiguration(server, configResponse.data)
     await this.loadServerKeys(server)
     return configResponse.data
   }
 
+  /**
+   * Load the remote servers public keys.  This will look at the remote servers smart configuration 
+   * for a pointer to the servers jwks_uri 
+   * @param {*} server The base url of the server
+   */
   async loadServerKeys(server) {
     let config = await this.getServerConfiguration(server);
     let response = await axios.get(config.jwks_url);
@@ -87,47 +119,88 @@ class Client {
     return response.data
   }
 
+  /**
+   * Add a server to this client.  If serverConfig is provide it will use that as the servers
+   * Configuration, otherwise it will attemt to load the configuration from the server
+   * @param {*} server The base url of the server
+   * @param {*} serverConfig JSON representation of the servers smart configuration 
+   */
   async addServer(server, serverConfig = null) {
     this.persistence.addServer(server)
     if (serverConfig) {
       this.persistence.addServerConfiguration(serverConfig)
       return serverConfig;
     } else {
-      console.log(server + "/.well-known/smart-configuration");
       return await this.loadServerConfiguration(server)
     }
   }
 
+  /**
+   * Add a client configuration for the remote server. 
+   * @param {*} server The base url of the server
+   * @param {*} client The client meta-data from registering the client
+   */
   async addClientConfiguration(server, client) {
     return await this.persistence.addClientConfiguration(server, client)
   }
 
+  /**
+   * Add the remote servers configuration 
+   * @param {*} server The base url of the server
+   * @param {*} config  The smar configruation json for the server
+   */
   async addServerConfiguration(server, config) {
     return await this.persistence.addServerConfiguration(server, config)
   }
 
+  /**
+   * 
+   * @param {*} server The base url of the server
+   */
   async getServerConfiguration(server) {
     return await this.persistence.getServerConfiguration(server)
   }
 
+  /**
+   * Get the client configuration for the given server
+   * @param {*} server The base url of the server
+   */
   async getClientConfiguration(server) {
     return await this.persistence.getClientConfiguration(server)
   }
 
+  /**
+   * Get a cached access token for the remote server
+   * @param {*} server The base url of the server
+   */
   async getAccessToken(server) {
     return await this.persistence.getAccessToken(server)
   }
 
+  /**
+   * Add and cache an access token for the remote server 
+   * @param {*} server The base url of the server
+   * @param {*} token the token to cache
+   */
   async addAccessToken(server, token) {
     await this.persistence.addAccessToken(server, token)
   }
 
+  /**
+   * Get the scopes set for this client to request from remote servers
+   */
   scopes() {
     return this.options.scopes || 'system/*.read'
   }
 
 
-  async requestAccessToken(server, kid = null, scopes = this.scopes()) {
+  /**
+   * Request an access token from a remote server
+   * @param {*} server The base url of the server to request a token from
+   * @param {*} kid the identifier of the key to use for signing the token request
+   * @param {*} scopes the scopes to request access for
+   */
+  async requestAccessToken(server, kid = this.signingKeyId, scopes = this.scopes()) {
     // see if there is an access token that is still good and send that back if so
     let accessToken = await this.getAccessToken(server)
     if (accessToken && (accessToken.issued_at + accessToken.expires_in) > (Date.now() / 1000)) {
@@ -182,24 +255,29 @@ class Client {
     return accessToken ? accessToken : await this.requestAccessToken(server)
   }
 
-
+/**
+ * Generate the data needed to send to a remote server for dynamically registering a client
+ */
   generateRegistrationMetaData() {
     let config = {
       "client_name": this.options.client_name,
       "token_endpoint_auth_method": "client_credentials"
     }
 
+    // add either the uri for the clients public keys or add the keys directly
     if (this.options.jwks_uri) {
-      config.jwks_uri = "https://client.example.org/my_public_keys.jwks"
+      config.jwks_uri = this.options.jwks_uri
     } else {
       config.jwks = this.jwks
     }
     return config
   }
+
+
   /**
-   * 
-   * @param {*} server 
    * Perform dynamic client registration on the server
+   * @param {*} server The base url of the remote server
+   * 
    */
   async register(server) {
     let config = await this.getClientConfiguration(server)
@@ -218,6 +296,10 @@ class Client {
     }
   }
 
+  /**
+   * Class method to generate JWKS
+   * @param {*} params 
+   */
   static async generateJWKS(params) {
     return await jose.JWK.createKey("oct", 384, { alg: "RS256" })
   }

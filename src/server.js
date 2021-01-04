@@ -1,4 +1,3 @@
-
 const jose = require("node-jose")
 const qs = require("querystring")
 
@@ -8,7 +7,11 @@ class ServerUtils {
     this.serverConfiguration = serverConfiguration
   }
 
-
+  /**
+   * Get the keystore that will contain the keys used to validate BEARER Tokens
+   * This will be configured from either the configuration objects jwks or jwks_uri. 
+   * If the config contains a uri it will download the keys from there.
+   */
   async getKeystore(){
     if(this.keystore){return this.keystore}
     if(this.serverConfiguration.jwks){
@@ -20,18 +23,29 @@ class ServerUtils {
     return this.keystore
   }
 
-  async retrieveJWKS(url){
+  /**
+   * Download the server's jwks from a remote location
+   */
+  async retrieveJWKS(){
     let response = await axios.get(this.serverConfiguration.jwks_uri)
     this.serverConfiguration.jwks = response.data
     return this.serverConfiguration.jwks 
   }
 
 
+  /**
+   * Validate the signature on a bearer token
+   * @param {*} token 
+   */
   async validateLocal(token){
     return await jose.JWS.createVerify(this.getKeystore()).verify(token)
   }
 
 
+  /**
+   * Perform validation of a token based on the remote server's introspection endpoint. 
+   * @param {*} token 
+   */
   async serverValidate(token){
     const config = {
       headers: {
